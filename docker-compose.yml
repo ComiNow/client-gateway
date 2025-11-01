@@ -1,0 +1,76 @@
+services:
+  nats-server:
+    image: nats:latest
+    ports:
+      - "8222:8222"
+      - "4222:4222"
+
+  client-gateway:
+    container_name: client-gateway
+    depends_on:
+      - nats-server
+    build: .
+    ports:
+      - ${PORT}:3000
+    volumes:
+      - ./src:/usr/src/app/src
+    command: npm run start:dev
+    env_file:
+      - .env
+
+  auth-microservice:
+    container_name: auth-microservice
+    depends_on:
+      - nats-server
+    build: ../auth-microservice
+    volumes:
+      - ../auth-microservice/src:/usr/src/app/src
+    command: npm run start:dev
+    env_file:
+      - ../auth-microservice/.env
+
+  orders-microservice:
+    container_name: orders-microservice
+    depends_on:
+      - nats-server
+    build: ../order-microservice
+    volumes:
+      - ../order-microservice/src:/usr/src/app/src
+    command: npm run start:dev
+    env_file:
+      - ../order-microservice/.env
+
+  products-microservice:
+    container_name: product-microservice
+    build: ../product-microservice
+    depends_on:
+      - nats-server
+    volumes:
+      - ../product-microservice/src:/usr/src/app/src
+    command: npm run start:dev
+    env_file:
+      - ../product-microservice/.env
+
+  payments-microservice:
+    container_name: payments-microservice
+    build: ../payment-microservice
+    depends_on:
+      - nats-server
+    ports:
+      - ${PAYMENTS_MS_PORT}:3003
+    volumes:
+      - ../payment-microservice/src:/usr/src/app/src
+    command: npm run start:dev
+    env_file:
+      - ../payment-microservice/.env
+
+  customization-microservice:
+    container_name: customization-microservice
+    build: ../customization-microservice
+    depends_on:
+      - nats-server
+    volumes:
+      - ../customization-microservice/src:/usr/src/app/src
+    command: npm run start:dev
+    env_file:
+      - ../customization-microservice/.env
