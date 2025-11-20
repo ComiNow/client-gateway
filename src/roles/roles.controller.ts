@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { ClientProxy, RpcException } from '@nestjs/microservices';
 import {
@@ -26,10 +27,13 @@ import {
 import { catchError } from 'rxjs';
 import { envs } from 'src/config/envs';
 import { User } from 'src/auth/decorators';
+import { AuthGuard } from 'src/auth/guards/auth.guard';
+import { SkipBusinessCheck } from 'src/auth/decorators/skip-business-check.decorator';
 import { CreateRoleDto, UpdateRoleDto, AssignRoleDto } from './dto';
 
 @ApiTags('Roles')
 @ApiBearerAuth('JWT-auth')
+@UseGuards(AuthGuard)
 @Controller('roles')
 export class RolesController {
   constructor(
@@ -37,10 +41,11 @@ export class RolesController {
   ) {}
 
   @Post()
+  @SkipBusinessCheck()
   @ApiOperation({
     summary: 'Crear nuevo rol',
     description:
-      'Crea un rol personalizado para el negocio con permisos específicos. El rol puede tener múltiples permisos pero cada empleado solo tendrá un rol.',
+      'Crea un rol personalizado para el negocio con permisos específicos. Los permisos deben ser IDs de módulos válidos.',
   })
   @ApiBody({
     type: CreateRoleDto,
@@ -50,7 +55,11 @@ export class RolesController {
         value: {
           name: 'Supervisor',
           description: 'Supervisor de turno con acceso a reportes y personal',
-          permissions: ['orders', 'reports', 'employees'],
+          permissions: [
+            '673abc123def456789012345',
+            '673abc123def456789012346',
+            '673abc123def456789012347',
+          ],
         },
       },
       example2: {
@@ -58,27 +67,12 @@ export class RolesController {
         value: {
           name: 'Barista',
           description: 'Especialista en preparación de bebidas',
-          permissions: ['orders', 'products'],
+          permissions: ['673abc123def456789012345', '673abc123def456789012348'],
         },
       },
     },
   })
-  @ApiCreatedResponse({
-    description: 'Rol creado exitosamente',
-    schema: {
-      example: {
-        id: '68dded65a50dd17af9ce9b08',
-        name: 'Supervisor',
-        description: 'Supervisor de turno con acceso a reportes y personal',
-        permissions: ['orders', 'reports', 'employees'],
-        isDefault: false,
-        isSystem: false,
-        businessId: '68dded65a50dd17af9ce9b09',
-        createdAt: '2025-10-28T10:00:00Z',
-        updatedAt: '2025-10-28T10:00:00Z',
-      },
-    },
-  })
+  @ApiCreatedResponse({ description: 'Rol creado exitosamente' })
   @ApiBadRequestResponse({ description: 'Datos de entrada inválidos' })
   @ApiConflictResponse({ description: 'Ya existe un rol con ese nombre' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
@@ -95,51 +89,38 @@ export class RolesController {
       );
   }
 
-  @Get('business/:businessId')
+  @Post('defaults/:businessId')
   @ApiOperation({
-    summary: 'Listar roles del negocio',
+    summary: 'Crear roles por defecto',
     description:
-      'Obtiene todos los roles (predeterminados y personalizados) de un negocio con el conteo de empleados asignados.',
+      'Crea los roles predeterminados del sistema para un negocio (Administrador, Gerente, Cajero, Cocinero, Mesero). Este endpoint normalmente se llama automáticamente al crear un negocio.',
   })
   @ApiParam({
     name: 'businessId',
     description: 'ID del negocio',
-    example: '68dded65a50dd17af9ce9b08',
+    example: '673abc123def456789012345',
   })
-  @ApiOkResponse({
-    description: 'Lista de roles obtenida',
-    schema: {
-      example: [
-        {
-          id: '68dded65a50dd17af9ce9b08',
-          name: 'Administrador',
-          description: 'Acceso completo a todos los módulos del sistema',
-          permissions: ['orders', 'products', 'reports', 'employees'],
-          isDefault: true,
-          isSystem: true,
-          employeeCount: 2,
-          businessId: '68dded65a50dd17af9ce9b09',
-          createdAt: '2025-10-27T10:00:00Z',
-          updatedAt: '2025-10-27T10:00:00Z',
-        },
-        {
-          id: '68dded65a50dd17af9ce9b10',
-          name: 'Cajero',
-          description: 'Acceso al punto de venta y gestión de órdenes',
-          permissions: ['orders', 'payments'],
-          isDefault: true,
-          isSystem: false,
-          employeeCount: 5,
-          businessId: '68dded65a50dd17af9ce9b09',
-          createdAt: '2025-10-27T10:00:00Z',
-          updatedAt: '2025-10-27T10:00:00Z',
-        },
-      ],
-    },
-  })
+  @ApiCreatedResponse({ description: 'Roles por defecto creados' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
-  findAll(@Param('businessId') businessId: string) {
-    return this.client.send('roles.findAll', businessId).pipe(
+  createDefaultRoles(@Param('businessId') businessId: string) {
+    return this.client.send('roles.createDefaults', { businessId }).pipe(
+      catchError((error) => {
+        throw new RpcException(error);
+      }),
+    );
+  }
+
+  @Get()
+  @SkipBusinessCheck()
+  @ApiOperation({
+    summary: 'Listar roles del negocio',
+    description:
+      'Obtiene todos los roles (predeterminados y personalizados) del negocio autenticado con el conteo de empleados asignados.',
+  })
+  @ApiOkResponse({ description: 'Lista de roles obtenida' })
+  @ApiUnauthorizedResponse({ description: 'No autorizado' })
+  findAll(@User() user: any) {
+    return this.client.send('roles.findAll', user.businessId).pipe(
       catchError((error) => {
         throw new RpcException(error);
       }),
@@ -147,6 +128,7 @@ export class RolesController {
   }
 
   @Get(':id')
+  @SkipBusinessCheck()
   @ApiOperation({
     summary: 'Obtener rol por ID',
     description:
@@ -155,45 +137,9 @@ export class RolesController {
   @ApiParam({
     name: 'id',
     description: 'ID del rol',
-    example: '68dded65a50dd17af9ce9b08',
+    example: '673abc123def456789012345',
   })
-  @ApiOkResponse({
-    description: 'Rol encontrado',
-    schema: {
-      example: {
-        id: '68dded65a50dd17af9ce9b08',
-        name: 'Cajero',
-        description: 'Acceso al punto de venta y gestión de órdenes',
-        permissions: ['orders', 'payments'],
-        isDefault: true,
-        isSystem: false,
-        businessId: '68dded65a50dd17af9ce9b09',
-        employeeCount: 5,
-        modules: [
-          {
-            id: 'orders',
-            name: 'orders',
-            displayName: 'Gestión de Órdenes',
-            description: 'Módulo para gestionar pedidos',
-            icon: '🛒',
-            order: 1,
-            isActive: true,
-          },
-          {
-            id: 'payments',
-            name: 'payments',
-            displayName: 'Pagos',
-            description: 'Módulo de procesamiento de pagos',
-            icon: '💳',
-            order: 2,
-            isActive: true,
-          },
-        ],
-        createdAt: '2025-10-27T10:00:00Z',
-        updatedAt: '2025-10-27T10:00:00Z',
-      },
-    },
-  })
+  @ApiOkResponse({ description: 'Rol encontrado' })
   @ApiNotFoundResponse({ description: 'Rol no encontrado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })
   findOne(@Param('id') id: string, @User() user: any) {
@@ -207,6 +153,7 @@ export class RolesController {
   }
 
   @Patch(':id')
+  @SkipBusinessCheck()
   @ApiOperation({
     summary: 'Actualizar rol',
     description:
@@ -215,43 +162,10 @@ export class RolesController {
   @ApiParam({
     name: 'id',
     description: 'ID del rol',
-    example: '68dded65a50dd17af9ce9b08',
+    example: '673abc123def456789012345',
   })
-  @ApiBody({
-    type: UpdateRoleDto,
-    examples: {
-      example1: {
-        summary: 'Actualizar permisos',
-        value: {
-          description: 'Supervisor con acceso ampliado',
-          permissions: ['orders', 'reports', 'employees', 'inventory'],
-        },
-      },
-      example2: {
-        summary: 'Cambiar nombre y descripción',
-        value: {
-          name: 'Supervisor Senior',
-          description: 'Supervisor con responsabilidades adicionales',
-        },
-      },
-    },
-  })
-  @ApiOkResponse({
-    description: 'Rol actualizado exitosamente',
-    schema: {
-      example: {
-        id: '68dded65a50dd17af9ce9b08',
-        name: 'Supervisor Senior',
-        description: 'Supervisor con responsabilidades adicionales',
-        permissions: ['orders', 'reports', 'employees', 'inventory'],
-        isDefault: false,
-        isSystem: false,
-        businessId: '68dded65a50dd17af9ce9b09',
-        createdAt: '2025-10-27T10:00:00Z',
-        updatedAt: '2025-10-28T11:30:00Z',
-      },
-    },
-  })
+  @ApiBody({ type: UpdateRoleDto })
+  @ApiOkResponse({ description: 'Rol actualizado exitosamente' })
   @ApiBadRequestResponse({ description: 'Datos de entrada inválidos' })
   @ApiNotFoundResponse({ description: 'Rol no encontrado' })
   @ApiConflictResponse({
@@ -277,6 +191,7 @@ export class RolesController {
   }
 
   @Delete(':id')
+  @SkipBusinessCheck()
   @ApiOperation({
     summary: 'Eliminar rol',
     description:
@@ -285,16 +200,9 @@ export class RolesController {
   @ApiParam({
     name: 'id',
     description: 'ID del rol',
-    example: '68dded65a50dd17af9ce9b08',
+    example: '673abc123def456789012345',
   })
-  @ApiOkResponse({
-    description: 'Rol eliminado exitosamente',
-    schema: {
-      example: {
-        message: 'Rol eliminado correctamente',
-      },
-    },
-  })
+  @ApiOkResponse({ description: 'Rol eliminado exitosamente' })
   @ApiNotFoundResponse({ description: 'Rol no encontrado' })
   @ApiForbiddenResponse({
     description: 'No se puede eliminar un rol del sistema',
@@ -314,48 +222,14 @@ export class RolesController {
   }
 
   @Post('assign')
+  @SkipBusinessCheck()
   @ApiOperation({
     summary: 'Asignar rol a empleado',
     description:
-      'Asigna UN rol a un empleado. El empleado solo puede tener un rol a la vez, pero ese rol puede tener múltiples permisos. Reemplaza el rol anterior si existía.',
+      'Asigna UN rol a un empleado. El empleado solo puede tener un rol a la vez.',
   })
-  @ApiBody({
-    type: AssignRoleDto,
-    examples: {
-      example1: {
-        summary: 'Asignar rol de Cajero',
-        value: {
-          employeeId: '68dded65a50dd17af9ce9b08',
-          roleId: '68dded65a50dd17af9ce9b09',
-        },
-      },
-      example2: {
-        summary: 'Cambiar a Supervisor',
-        value: {
-          employeeId: '68dded65a50dd17af9ce9b08',
-          roleId: '68dded65a50dd17af9ce9b10',
-        },
-      },
-    },
-  })
-  @ApiOkResponse({
-    description: 'Rol asignado exitosamente',
-    schema: {
-      example: {
-        id: '68dded65a50dd17af9ce9b08',
-        identificationNumber: '1234567890',
-        email: 'juan@example.com',
-        fullName: 'Juan Pérez',
-        businessId: '68dded65a50dd17af9ce9b09',
-        roleId: '68dded65a50dd17af9ce9b10',
-        role: {
-          id: '68dded65a50dd17af9ce9b10',
-          name: 'Cajero',
-          description: 'Acceso al punto de venta',
-        },
-      },
-    },
-  })
+  @ApiBody({ type: AssignRoleDto })
+  @ApiOkResponse({ description: 'Rol asignado exitosamente' })
   @ApiBadRequestResponse({ description: 'Datos de entrada inválidos' })
   @ApiNotFoundResponse({ description: 'Empleado o rol no encontrado' })
   @ApiUnauthorizedResponse({ description: 'No autorizado' })

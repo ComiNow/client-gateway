@@ -84,8 +84,8 @@ export class AuthController {
         value: {
           fullName: 'María González',
           identificationNumber: '1234567890',
-          cred: 'EMPL001',
-          positionId: '507f1f77bcf86cd799439011',
+          email: 'maria@coffeenow.com',
+          roleId: '691e5fc362e1b40d467b7f6c',
           password: 'SecurePass123!',
           businessId: '507f1f77bcf86cd799439012',
         },
@@ -212,6 +212,30 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Token requerido' })
   getEmployeesByBusinessId(@Param('businessId') businessId: string) {
     return this.client.send('auth.get.employees.by.business', businessId).pipe(
+      catchError((error) => {
+        throw new RpcException(error);
+      }),
+    );
+  }
+
+  @Post('modules/seed')
+  @SkipBusinessCheck()
+  @ApiOperation({
+    summary: 'Inicializar módulos del sistema',
+    description:
+      'Crea los módulos base del sistema. Solo se ejecuta una vez, si ya existen módulos no hace nada.',
+  })
+  @ApiCreatedResponse({
+    description: 'Módulos inicializados',
+    schema: {
+      example: {
+        message: 'Modules initialized successfully',
+        count: 9,
+      },
+    },
+  })
+  seedModules() {
+    return this.client.send('auth.seed.modules', {}).pipe(
       catchError((error) => {
         throw new RpcException(error);
       }),
