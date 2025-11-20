@@ -14,6 +14,8 @@ import { envs } from 'src/config/envs';
 export class AuthGuard implements CanActivate {
   private readonly excludedRoutePatterns = [
     { pattern: /^\/$/, method: 'GET' },
+    { pattern: /^\/api\/?$/, method: 'GET' },
+    { pattern: /^\/docs/, method: 'GET' }, // Swagger documentation
     { pattern: /^\/api\/auth\/login$/, method: 'POST' },
     { pattern: /^\/api\/auth\/register\/business$/, method: 'POST' },
     { pattern: /^\/api\/orders$/, method: 'POST' },

@@ -18,7 +18,9 @@ async function bootstrap() {
       'http://localhost:4200',
       'http://localhost:4201',
       'https://z2j7v360-4200.use.devtunnels.ms',
-      'https://s05phrls-4201.use.devtunnels.ms'
+      'https://s05phrls-4201.use.devtunnels.ms',
+      'https://d3gwsdg49ynx4o.cloudfront.net', // AppServiceClient - Producción
+      'https://d2wez1qp46w24p.cloudfront.net', // AppServiceEmployee - Producción
     ],
   });
 
